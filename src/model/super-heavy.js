@@ -13,13 +13,14 @@ import {
   frostBands,
 } from './helpers.js';
 import { quality } from '../quality.js';
+import { engineOf } from '../data/vehicle.js';
 
 /**
  * Super Heavy. Origin sits at the nozzle exit plane; +Y is up.
- * Returns a group whose userData.top is the y of the hot-stage interface.
+ * `b` is the stage entry, `v` the variant it belongs to.
+ * See builders.js for the userData contract this fulfils.
  */
-export function buildBooster(v) {
-  const b = v.booster;
+export function buildSuperHeavy(b, v) {
   const H = b.height;
   const root = new THREE.Group();
   root.name = 'super-heavy';
@@ -103,27 +104,35 @@ export function buildBooster(v) {
   root.add(skirt);
 
   /* ----------------------------------------------------------- engines ---- */
-  const gen = b.engineName.includes('3') ? 3 : 2;
+  const gen = engineOf(b).gen;
+  // the published arrangement: an inner triangle of 3, a ring of 10, a ring of
+  // 20. Only the centre three hold through hot staging and relight for the
+  // boostback and landing burns, so they own their exhaust plumes too.
+  const ENGINE_RINGS = [
+    { count: 3, radius: 1.25, phase: Math.PI / 2, gimbal: true, hold: true },
+    { count: 10, radius: 2.62, phase: 0.15, gimbal: quality.segments >= 128, hold: false },
+    { count: 20, radius: 3.86, phase: 0.08, gimbal: false, hold: false },
+  ];
+
+  const plumes = [];
   const engines = part('booster-engines', { explode: new THREE.Vector3(0, -11, 0) });
   {
     const mountY = 2.2;
-    // 3 gimballing centre engines
-    for (const [x, z] of ring(3, 1.25, Math.PI / 2)) {
-      const e = raptor({ gen, gimbal: true });
-      e.position.set(x, mountY, z);
-      engines.add(e);
-    }
-    // 10 gimballing middle engines
-    for (const [x, z] of ring(10, 2.62, 0.15)) {
-      const e = raptor({ gen, gimbal: quality.segments >= 128 });
-      e.position.set(x, mountY, z);
-      engines.add(e);
-    }
-    // 20 fixed outer engines
-    for (const [x, z] of ring(20, 3.86, 0.08)) {
-      const e = raptor({ gen });
-      e.position.set(x, mountY, z);
-      engines.add(e);
+    for (const r of ENGINE_RINGS) {
+      for (const [x, z] of ring(r.count, r.radius, r.phase)) {
+        const e = raptor({ gen, gimbal: r.gimbal });
+        e.position.set(x, mountY, z);
+        engines.add(e);
+        plumes.push({
+          x,
+          y: 0.35,
+          z,
+          radius: 0.62,
+          length: r.hold ? 16 : 14,
+          tint: 0x9fd4ff,
+          hold: r.hold,
+        });
+      }
     }
   }
   root.add(engines);
@@ -298,5 +307,6 @@ export function buildBooster(v) {
   root.userData.engineExitY = 0.35;
   root.userData.engineGroup = engines;
   root.userData.frost = frost;
+  root.userData.plumes = plumes;
   return root;
 }

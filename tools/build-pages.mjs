@@ -23,30 +23,27 @@ const baseArg = process.argv.indexOf('--base');
 const BASE = (baseArg > -1 ? process.argv[baseArg + 1] : 'https://ruchishshah.github.io/cutaway-os')
   .replace(/\/+$/, '');
 
-const { PARTS, VERSIONS, DEFAULT_VERSION, SOURCES, LAST_VERIFIED } = await import(
-  join(ROOT, 'src/data/vehicle.js')
-);
+const {
+  PARTS,
+  VARIANTS,
+  DEFAULT_VARIANT,
+  SOURCES,
+  LAST_VERIFIED,
+  vehicleOf,
+  stageById,
+  stagesTopDown,
+  partsForStage,
+  partLabel,
+  partSpecs,
+} = await import(join(ROOT, 'src/data/vehicle.js'));
 
-const version = VERSIONS[DEFAULT_VERSION];
+const variant = VARIANTS[DEFAULT_VARIANT];
+const vehicle = vehicleOf(variant);
 
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
   );
-
-const STAGE = {
-  ship: { title: 'Starship', sub: 'upper stage' },
-  booster: { title: 'Super Heavy', sub: 'booster' },
-};
-
-/** Resolve labels that vary with the vehicle generation. */
-function label(p, v) {
-  if (p.id === 'booster-engines') return `${v.booster.engines} × ${v.booster.engineName}`;
-  if (p.id === 'ship-engines-sl') return `${v.ship.seaLevel} × sea-level Raptor`;
-  if (p.id === 'ship-engines-vac') return `${v.ship.vacuum} × Raptor Vacuum`;
-  if (p.id === 'grid-fins') return `${v.booster.gridFins} × grid fin`;
-  return p.label;
-}
 
 function page({ title, description, canonical, body, breadcrumb }) {
   return `<!doctype html>
@@ -96,25 +93,25 @@ function page({ title, description, canonical, body, breadcrumb }) {
 const pages = [];
 
 for (const p of PARTS) {
-  const name = label(p, version);
-  const stage = STAGE[p.stage];
-  const rows = typeof p.specs === 'function' ? p.specs(version) : p.specs || [];
+  const name = partLabel(p, variant);
+  const stage = stageById(variant, p.stage);
+  const rows = partSpecs(p, variant);
   const canonical = `${BASE}/parts/${p.id}.html`;
   const viewUrl = `../index.html?part=${p.id}${p.internal ? '&cut=1' : ''}`;
 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'TechArticle',
-    headline: `${name} — SpaceX ${stage.title}`,
+    headline: `${name} — ${vehicle.operator} ${stage.name}`,
     description: p.blurb,
     url: canonical,
     isPartOf: { '@type': 'WebSite', name: 'CutawayOS', url: `${BASE}/` },
-    about: { '@type': 'Product', name: `SpaceX ${stage.title}` },
+    about: { '@type': 'Product', name: `${vehicle.operator} ${stage.name}` },
   };
 
   const body = `
       <article>
-        <p class="doc-eyebrow">${esc(stage.title)} · ${esc(p.group)}${p.internal ? ' · internal' : ''}</p>
+        <p class="doc-eyebrow">${esc(stage.name)} · ${esc(p.group)}${p.internal ? ' · internal' : ''}</p>
         <h1>${esc(name)}</h1>
         <p class="doc-lead">${esc(p.blurb)}</p>
 
@@ -133,9 +130,9 @@ for (const p of PARTS) {
 
         <h2>Where this sits</h2>
         <p>
-          Part of the <strong>${esc(stage.title)}</strong> ${esc(stage.sub)} on
-          ${esc(version.name)} (${esc(version.years)}), a ${version.stackHeight} m vehicle
-          ${version.diameter} m in diameter.
+          Part of the <strong>${esc(stage.name)}</strong> ${esc(stage.sub)} on
+          ${esc(variant.name)} (${esc(variant.years)}), a ${variant.height} m vehicle
+          ${variant.diameter} m in diameter.
           <a href="./index.html">See every component →</a>
         </p>
       </article>
@@ -145,7 +142,7 @@ for (const p of PARTS) {
     file: `${p.id}.html`,
     url: canonical,
     html: page({
-      title: `${name} — SpaceX ${stage.title} | CutawayOS`,
+      title: `${name} — ${vehicle.operator} ${stage.name} | CutawayOS`,
       description: p.blurb.slice(0, 300),
       canonical,
       breadcrumb: `<a href="../index.html">CutawayOS</a> <span>/</span> <a href="./index.html">Components</a> <span>/</span> ${esc(name)}`,
@@ -156,14 +153,22 @@ for (const p of PARTS) {
 
 /* --------------------------------------------------------------- the index */
 
-const byStage = (stage) =>
-  PARTS.filter((p) => p.stage === stage)
-    .map(
-      (p) =>
-        `<li><a href="./${p.id}.html"><strong>${esc(label(p, version))}</strong>
+/** One <h2> plus list per stage, nose-first, so any vehicle shape reads right. */
+const stageSections = stagesTopDown(variant)
+  .map(
+    (stage) => `
+        <h2>${esc(stage.name)} <span class="doc-sub">${esc(stage.sub)}</span></h2>
+        <ul class="doc-list">
+          ${partsForStage(stage.id)
+            .map(
+              (p) =>
+                `<li><a href="./${p.id}.html"><strong>${esc(partLabel(p, variant))}</strong>
             <span>${esc(p.group)}${p.internal ? ' · internal' : ''}</span></a></li>`
-    )
-    .join('\n          ');
+            )
+            .join('\n          ')}
+        </ul>`
+  )
+  .join('\n');
 
 const indexCanonical = `${BASE}/parts/index.html`;
 pages.push({
@@ -187,15 +192,7 @@ pages.push({
         </p>
         <a class="doc-cta" href="../index.html">Open the 3D model →</a>
 
-        <h2>Starship <span class="doc-sub">upper stage</span></h2>
-        <ul class="doc-list">
-          ${byStage('ship')}
-        </ul>
-
-        <h2>Super Heavy <span class="doc-sub">booster</span></h2>
-        <ul class="doc-list">
-          ${byStage('booster')}
-        </ul>
+        ${stageSections}
       </article>`,
   }),
 });

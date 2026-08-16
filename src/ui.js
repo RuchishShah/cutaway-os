@@ -1,4 +1,17 @@
-import { PARTS, VERSIONS, SOURCES, VIEWS, LAST_VERIFIED } from './data/vehicle.js';
+import {
+  VARIANTS,
+  SOURCES,
+  LAST_VERIFIED,
+  vehicleOf,
+  stageById,
+  stagesTopDown,
+  engineOf,
+  totalEngines,
+  partsForStage,
+  partLabel,
+  partSpecs,
+  viewsFor,
+} from './data/vehicle.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -8,17 +21,12 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-const STAGE_LABELS = {
-  ship: { title: 'Starship', sub: 'upper stage' },
-  booster: { title: 'Super Heavy', sub: 'booster' },
-};
-
 const GROUP_ORDER = ['Structure', 'Propellant', 'Propulsion', 'Aerodynamics', 'Thermal', 'Recovery'];
 
 export function createUI(handlers) {
   /* -------------------------------------------------------- version tabs -- */
   const versionBar = $('.version-switch');
-  for (const v of Object.values(VERSIONS)) {
+  for (const v of Object.values(VARIANTS)) {
     const b = el('button', null, `${v.short} · ${v.name}`);
     b.type = 'button';
     b.role = 'tab';
@@ -30,29 +38,33 @@ export function createUI(handlers) {
 
   /* ------------------------------------------------------ camera presets -- */
   const presetBar = $('#view-presets');
-  for (const view of VIEWS) {
-    const b = el('button', 'preset-btn');
-    b.type = 'button';
-    b.dataset.view = view.id;
-    b.append(view.label);
-    const k = el('kbd', null, view.key);
-    b.appendChild(k);
-    b.addEventListener('click', () => handlers.onPreset(view.id));
-    presetBar.appendChild(b);
+  let views = [];
+
+  function renderPresets(variant) {
+    views = viewsFor(variant);
+    presetBar.replaceChildren();
+    for (const view of views) {
+      const b = el('button', 'preset-btn');
+      b.type = 'button';
+      b.dataset.view = view.id;
+      b.append(view.label);
+      b.appendChild(el('kbd', null, view.key));
+      b.addEventListener('click', () => handlers.onPreset(view.id));
+      presetBar.appendChild(b);
+    }
   }
 
   /* ---------------------------------------------------------- part list --- */
   const listEl = $('#part-list');
 
-  function renderPartList(version, selectedId) {
+  function renderPartList(variant, selectedId) {
     listEl.replaceChildren();
-    for (const stage of ['ship', 'booster']) {
-      const meta = STAGE_LABELS[stage];
+    for (const stage of stagesTopDown(variant)) {
       const h = el('div', 'stage-heading');
-      h.append(meta.title, el('span', null, meta.sub));
+      h.append(stage.name, el('span', null, stage.sub));
       listEl.appendChild(h);
 
-      const inStage = PARTS.filter((p) => p.stage === stage);
+      const inStage = partsForStage(stage.id);
       const groups = [...new Set(inStage.map((p) => p.group))].sort(
         (a, b) => GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b)
       );
@@ -69,7 +81,7 @@ export function createUI(handlers) {
           b.setAttribute('aria-selected', String(p.id === selectedId));
           b.setAttribute('aria-current', String(p.id === selectedId));
           b.appendChild(el('span', 'dot'));
-          b.appendChild(el('span', null, resolveLabel(p, version)));
+          b.appendChild(el('span', null, partLabel(p, variant)));
           if (p.internal) b.appendChild(el('span', 'tag', 'internal'));
           b.addEventListener('click', () => handlers.onSelect(p.id));
           listEl.appendChild(b);
@@ -131,13 +143,17 @@ export function createUI(handlers) {
   const infoTitle = $('#info-title');
   const infoBody = $('#info-body');
 
-  function showVehicle(version) {
-    infoTitle.textContent = `${version.short} overview`;
+  function showVehicle(variant) {
+    const vehicle = vehicleOf(variant);
+    const first = variant.stages[0];
+    const engine = engineOf(first);
+
+    infoTitle.textContent = `${variant.short} overview`;
     infoBody.replaceChildren();
 
-    infoBody.appendChild(el('p', 'eyebrow', `${version.name} · ${version.years}`));
-    infoBody.appendChild(el('h3', null, 'Starship / Super Heavy'));
-    infoBody.appendChild(el('p', 'blurb', version.tagline));
+    infoBody.appendChild(el('p', 'eyebrow', `${variant.name} · ${variant.years}`));
+    infoBody.appendChild(el('h3', null, vehicle.fullName || vehicle.name));
+    infoBody.appendChild(el('p', 'blurb', variant.tagline));
 
     const stats = el('div', 'stat-grid');
     const add = (value, label) => {
@@ -146,28 +162,29 @@ export function createUI(handlers) {
       s.appendChild(el('span', null, label));
       stats.appendChild(s);
     };
-    add(`${version.stackHeight} m`, 'stack height');
-    add(`${version.diameter} m`, 'diameter');
-    add(`${approx(version.liftoffMassApprox)}${fmt(version.liftoffMass)} t`, 'liftoff mass');
-    add(`${version.payloadLeo} t`, 'payload to LEO');
-    add(`${approx(version.booster.thrustApprox)}${version.booster.thrust} MN`, 'liftoff thrust');
-    add(`${version.booster.engines + version.ship.seaLevel + version.ship.vacuum}`, 'raptor engines');
+    add(`${variant.height} m`, 'stack height');
+    add(`${variant.diameter} m`, 'diameter');
+    add(`${approx(variant.liftoffMassApprox)}${fmt(variant.liftoffMass)} t`, 'liftoff mass');
+    add(`${variant.payloadLeo} t`, 'payload to LEO');
+    add(`${approx(first.thrustApprox)}${first.thrust} MN`, 'liftoff thrust');
+    add(`${totalEngines(variant)}`, `${engine.name.split(' ')[0].toLowerCase()} engines`);
     infoBody.appendChild(stats);
 
     infoBody.appendChild(specTable([
-      ['Booster height', `${version.booster.height} m`],
-      ['Ship height', `${version.ship.height} m`],
-      ['Booster propellant', `${approx(version.booster.propellantApprox)}${fmt(version.booster.propellant)} t`],
-      ['Ship propellant', `${fmt(version.ship.propellant)} t`],
-      ['Propellants', 'Liquid methane + liquid oxygen'],
-      ['Engine', `${version.booster.engineName} · full-flow staged combustion`],
-      ['Recovery', 'Both stages caught by tower arms'],
+      ...variant.stages.map((s) => [`${s.name} height`, `${s.height} m`]),
+      ...variant.stages.map((s) => [
+        `${s.name} propellant`,
+        `${approx(s.propellantApprox)}${fmt(s.propellant)} t`,
+      ]),
+      ['Propellants', vehicle.propellants],
+      ['Engine', `${engine.name} · ${engine.cycle.toLowerCase()}`],
+      ['Recovery', vehicle.recovery],
     ]));
 
-    if (version.notes?.length) {
+    if (variant.notes?.length) {
       infoBody.appendChild(el('h3', null, 'What changed'));
       const ul = el('ul', 'note-list');
-      for (const n of version.notes) ul.appendChild(el('li', null, n));
+      for (const n of variant.notes) ul.appendChild(el('li', null, n));
       infoBody.appendChild(ul);
     }
 
@@ -178,16 +195,16 @@ export function createUI(handlers) {
     infoBody.appendChild(hint);
   }
 
-  function showPart(p, version) {
-    const label = resolveLabel(p, version);
-    infoTitle.textContent = STAGE_LABELS[p.stage].title;
+  function showPart(p, variant) {
+    const stage = stageById(variant, p.stage);
+    infoTitle.textContent = stage?.name ?? vehicleOf(variant).name;
     infoBody.replaceChildren();
 
     infoBody.appendChild(el('p', 'eyebrow', `${p.group}${p.internal ? ' · internal' : ''}`));
-    infoBody.appendChild(el('h3', null, label));
+    infoBody.appendChild(el('h3', null, partLabel(p, variant)));
     infoBody.appendChild(el('p', 'blurb', p.blurb));
 
-    const rows = typeof p.specs === 'function' ? p.specs(version) : p.specs || [];
+    const rows = partSpecs(p, variant);
     if (rows.length) infoBody.appendChild(specTable(rows));
 
     if (p.diagram === 'ffsc') {
@@ -286,7 +303,7 @@ export function createUI(handlers) {
              device, and switching rebuilds the model.</li>
        </ul>
        <h3>Keyboard</h3>
-       ${VIEWS.map((v) => keyRow(v.key, v.label)).join('')}
+       ${views.map((v) => keyRow(v.key, v.label)).join('')}
        ${keyRow('X', 'Toggle cutaway')}
        ${keyRow('E', 'Toggle exploded view')}
        ${keyRow('L', 'Toggle labels')}
@@ -352,6 +369,7 @@ export function createUI(handlers) {
 
   return {
     notify,
+    renderPresets,
     renderPartList,
     setSelected,
     setActiveVersion,
@@ -361,7 +379,7 @@ export function createUI(handlers) {
     closeModal,
     isModalOpen: () => !modal.hidden,
     openInfoDrawer: () => openPanel('panel-info', true),
-    resolveLabel,
+    views: () => views,
   };
 }
 
@@ -434,15 +452,6 @@ function ffscDiagram() {
 
 function keyRow(key, label) {
   return `<div class="key-row"><span>${label}</span><kbd>${key}</kbd></div>`;
-}
-
-function resolveLabel(p, version) {
-  if (typeof p.label === 'function') return p.label(version);
-  if (p.id === 'booster-engines' && version) return `${version.booster.engines} × ${version.booster.engineName}`;
-  if (p.id === 'ship-engines-sl' && version) return `${version.ship.seaLevel} × sea-level Raptor`;
-  if (p.id === 'ship-engines-vac' && version) return `${version.ship.vacuum} × Raptor Vacuum`;
-  if (p.id === 'grid-fins' && version) return `${version.booster.gridFins} × grid fin`;
-  return p.label;
 }
 
 function fmt(n) {

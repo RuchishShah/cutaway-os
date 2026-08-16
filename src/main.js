@@ -8,13 +8,19 @@ import {
   setTextureQuality,
 } from './model/materials.js';
 import { createUI } from './ui.js';
-import { VERSIONS, DEFAULT_VERSION, PART_BY_ID } from './data/vehicle.js';
+import {
+  VARIANTS,
+  DEFAULT_VARIANT,
+  PART_BY_ID,
+  partLabel,
+  vehicleOf,
+} from './data/vehicle.js';
 import { quality, setQuality, detectQuality, TIERS } from './quality.js';
 import { TIME_PRESETS, DEFAULT_PRESET } from './environment.js';
 import { readState, syncUrl, buildUrl } from './permalink.js';
 
 const urlState = readState();
-const URL_DEFAULTS = { version: DEFAULT_VERSION, light: DEFAULT_PRESET };
+const URL_DEFAULTS = { version: DEFAULT_VARIANT, light: DEFAULT_PRESET };
 
 /** Give the browser two frames so the loading overlay is on screen. */
 const paint = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -41,7 +47,7 @@ if (reducedMotion) viewer.setTweenScale(0.15);
 /* ------------------------------------------------------------------ state -- */
 
 const state = {
-  versionId: DEFAULT_VERSION,
+  versionId: DEFAULT_VARIANT,
   selected: null,
   cutaway: false,
   explode: 0,
@@ -51,7 +57,7 @@ const state = {
 };
 
 let stack = null;
-let version = VERSIONS[state.versionId];
+let variant = VARIANTS[state.versionId];
 const labelObjects = new Map();
 const highlighted = [];
 
@@ -66,12 +72,13 @@ const ui = createUI({
 function setVersion(id) {
   if (id === state.versionId && stack) return;
   state.versionId = id;
-  version = VERSIONS[id];
+  variant = VARIANTS[id];
   rebuild();
   ui.setActiveVersion(id);
-  ui.renderPartList(version, state.selected);
-  if (state.selected && PART_BY_ID[state.selected]) ui.showPart(PART_BY_ID[state.selected], version);
-  else ui.showVehicle(version);
+  ui.renderPresets(variant);
+  ui.renderPartList(variant, state.selected);
+  if (state.selected && PART_BY_ID[state.selected]) ui.showPart(PART_BY_ID[state.selected], variant);
+  else ui.showVehicle(variant);
 }
 
 function rebuild() {
@@ -84,7 +91,7 @@ function rebuild() {
     stack.dispose();
   }
 
-  stack = buildStack(version);
+  stack = buildStack(variant);
   viewer.scene.add(stack.root);
 
   viewer.environment.frameShadows(stack.stackHeight * 0.45, stack.stackHeight * 0.75);
@@ -121,7 +128,7 @@ function buildLabels() {
     div.className = 'pin muted';
     const body = document.createElement('span');
     body.className = 'pin-body';
-    body.textContent = ui.resolveLabel(part, version);
+    body.textContent = partLabel(part, variant);
     div.appendChild(body);
 
     // push the pin clear of the hull, radially outward from the vehicle axis
@@ -211,7 +218,7 @@ function selectPart(id, { focus = false } = {}) {
   refreshLabels();
 
   if (part) {
-    ui.showPart(part, version);
+    ui.showPart(part, variant);
     // internal parts are meaningless without the cutaway, so switch it on
     if (part.internal && !state.cutaway) {
       document.getElementById('tg-cutaway').checked = true;
@@ -220,7 +227,7 @@ function selectPart(id, { focus = false } = {}) {
     if (focus) focusOnPart(id);
     if (window.matchMedia('(max-width: 860px)').matches) ui.openInfoDrawer();
   } else {
-    ui.showVehicle(version);
+    ui.showVehicle(variant);
   }
   updateReadout();
 }
@@ -256,20 +263,22 @@ function applyExplode(t) {
 
 function applyPreset(id) {
   const box = new THREE.Box3();
-  const b = stack.booster;
-  const s = stack.ship;
+
+  // "stage:<id>" frames one stage, whichever stages this vehicle happens to have
+  if (id.startsWith('stage:')) {
+    const group = stack.stage(id.slice('stage:'.length));
+    if (!group) return;
+    box.setFromObject(group);
+    viewer.frameBox(box, { padding: 1.08, elevation: 0.12 });
+    return;
+  }
 
   switch (id) {
-    case 'ship':
-      box.setFromObject(s);
-      viewer.frameBox(box, { padding: 1.08, elevation: 0.12 });
-      break;
-    case 'booster':
-      box.setFromObject(b);
-      viewer.frameBox(box, { padding: 1.08, elevation: 0.12 });
-      break;
     case 'engines': {
-      box.setFromObject(b.userData.engineGroup);
+      // the cluster that leaves the pad — the bottom stage's
+      const engines = stack.lower.userData.engineGroup;
+      if (!engines) return;
+      box.setFromObject(engines);
       viewer.frameBox(box, { padding: 1.15, elevation: -0.42 });
       break;
     }
@@ -319,11 +328,12 @@ function playSeparation() {
   document.getElementById('btn-separate').dataset.active = 'true';
   document.getElementById('btn-separate').textContent = 'Stop separation';
 
-  // frame the whole staging event: booster top through where the ship ends up
+  // frame the whole staging event: the interface through where the upper stage
+  // ends up
   const box = stack.contentBox();
-  const mid = stack.booster.userData.top;
+  const mid = stack.upper.position.y;
   box.min.y = mid - 55;
-  box.max.y = mid + stack.ship.userData.height + 46;
+  box.max.y = mid + stack.upper.userData.height + 46;
   viewer.frameBox(box, { padding: 1.05, elevation: 0.08 });
 }
 
@@ -334,9 +344,10 @@ function updateEmbedTitle() {
   const el = document.getElementById('embed-title');
   const link = document.getElementById('embed-link');
   const part = state.selected ? PART_BY_ID[state.selected] : null;
+  const vehicle = vehicleOf(variant);
   el.textContent = part
-    ? `${ui.resolveLabel(part, version)} — Starship ${version.short}`
-    : `Starship / Super Heavy — ${version.name}`;
+    ? `${partLabel(part, variant)} — ${vehicle.name} ${variant.short}`
+    : `${vehicle.fullName || vehicle.name} — ${variant.name}`;
   link.href = buildUrl({ ...currentState(), embed: false }, URL_DEFAULTS);
 }
 
@@ -373,14 +384,14 @@ const readout = document.getElementById('readout');
 function updateReadout() {
   pushUrl();
   updateEmbedTitle();
-  const sel = state.selected ? ui.resolveLabel(PART_BY_ID[state.selected], version) : '—';
+  const sel = state.selected ? partLabel(PART_BY_ID[state.selected], variant) : '—';
   const modes = [
     state.cutaway ? 'cutaway' : null,
     state.explode > 0.005 ? `exploded ${Math.round(state.explode * 100)}%` : null,
     state.separating ? 'staging' : null,
   ].filter(Boolean);
   readout.innerHTML =
-    `<div><b>${version.short}</b> · ${version.stackHeight} m · ${version.diameter} m dia.</div>` +
+    `<div><b>${variant.short}</b> · ${variant.height} m · ${variant.diameter} m dia.</div>` +
     `<div><b>Selected</b> ${escapeHtml(sel)}</div>` +
     (modes.length ? `<div><b>Mode</b> ${modes.join(' · ')}</div>` : '') +
     `<div><b>Render</b> ${escapeHtml(viewer.environment.preset.label)} · ${escapeHtml(TIERS[quality.id].label)}</div>`;
@@ -552,8 +563,8 @@ window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
   if (ui.isModalOpen() && e.key !== 'Escape') return;
 
-  const presets = { 1: 'stack', 2: 'ship', 3: 'booster', 4: 'engines', 5: 'nose' };
-  if (presets[e.key]) return applyPreset(presets[e.key]);
+  const view = ui.views().find((v) => v.key === e.key);
+  if (view) return applyPreset(view.id);
 
   switch (e.key.toLowerCase()) {
     case 'x':
@@ -670,7 +681,7 @@ if (urlState.embed) {
   }
 }
 
-setVersion(VERSIONS[urlState.version] ? urlState.version : DEFAULT_VERSION);
+setVersion(VARIANTS[urlState.version] ? urlState.version : DEFAULT_VARIANT);
 ui.setActiveVersion(state.versionId);
 
 if (urlState.light && TIME_PRESETS.some((t) => t.id === urlState.light)) {
@@ -704,7 +715,7 @@ if (Number.isFinite(urlState.explode) && urlState.explode > 0) {
 
 const wantedPart = urlState.part && PART_BY_ID[urlState.part] ? urlState.part : null;
 if (wantedPart) selectPart(wantedPart, { focus: !urlState.cam });
-else ui.showVehicle(version);
+else ui.showVehicle(variant);
 
 if (urlState.cam) viewer.setCamera(urlState.cam);
 else if (!wantedPart) applyPreset('stack');

@@ -15,13 +15,15 @@ import {
   frostBands,
 } from './helpers.js';
 import { quality } from '../quality.js';
+import { engineOf } from '../data/vehicle.js';
 
 /**
  * The Starship upper stage. Origin sits at the base of the aft skirt.
  * Windward (heat-shielded) side faces +X. Aft flaps sit on ±Z.
+ * `s` is the stage entry, `v` the variant it belongs to.
+ * See builders.js for the userData contract this fulfils.
  */
-export function buildShip(v) {
-  const s = v.ship;
+export function buildStarshipUpper(s, v) {
   const H = s.height;
   const root = new THREE.Group();
   root.name = 'starship';
@@ -267,12 +269,15 @@ export function buildShip(v) {
   root.add(hCh4);
 
   /* ------------------------------------------------------------ engines --- */
-  const gen = s.engineName.includes('3') ? 3 : 2;
+  const gen = engineOf(s).gen;
+  const plumes = [];
+
   const sl = part('ship-engines-sl', { explode: new THREE.Vector3(0, -10, 0) });
   for (const [x, z] of ring(s.seaLevel, 1.15, Math.PI / 2)) {
     const e = raptor({ gen, gimbal: true });
     e.position.set(x, 4.6, z);
     sl.add(e);
+    plumes.push({ x, y: 2.75, z, radius: 0.6, length: 11, tint: 0xbfe2ff });
   }
   root.add(sl);
 
@@ -281,6 +286,7 @@ export function buildShip(v) {
     const e = raptor({ vacuum: true, gen });
     e.position.set(x, 4.1, z);
     vac.add(e);
+    plumes.push({ x, y: 0.6, z, radius: 1.15, length: 15, tint: 0xcfe9ff });
   }
   root.add(vac);
 
@@ -358,5 +364,6 @@ export function buildShip(v) {
   root.userData.noseBase = noseBase;
   root.userData.engineExitY = 0.6;
   root.userData.frost = frost;
+  root.userData.plumes = plumes;
   return root;
 }

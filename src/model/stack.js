@@ -1,27 +1,40 @@
 import * as THREE from 'three';
-import { buildBooster } from './booster.js';
-import { buildShip } from './ship.js';
-import { stampParts, freezeBasePositions, ring, R } from './helpers.js';
+import { buildStage } from './builders.js';
+import { stampParts, freezeBasePositions, R } from './helpers.js';
 import { attachClipping } from './materials.js';
 
 const HUMAN_HEIGHT = 1.8;
 
 /**
- * Assembles the full stack and exposes the handful of state setters the UI
- * drives: exploded view, cutaway, stage separation and engine plumes.
+ * Assembles a variant's stages into a stack and exposes the handful of state
+ * setters the UI drives: exploded view, cutaway, stage separation and engine
+ * plumes.
+ *
+ * Stages are listed bottom-first in the data and stacked in that order, each
+ * sitting on the interface the one below reports. Nothing here knows how many
+ * there are or what they are called.
  */
-export function buildStack(version) {
+export function buildStack(variant) {
   const root = new THREE.Group();
 
-  const booster = buildBooster(version);
-  const ship = buildShip(version);
-  ship.position.y = booster.userData.top;
-  root.add(booster, ship);
+  const stages = [];
+  const byStageId = new Map();
+  let interfaceY = 0;
+  for (const stage of variant.stages) {
+    const group = buildStage(stage, variant);
+    group.position.y = interfaceY;
+    interfaceY += group.userData.top;
+    stages.push(group);
+    byStageId.set(stage.id, group);
+    root.add(group);
+  }
+  const top = stages[stages.length - 1];
+  const stackHeight = top.position.y + top.userData.height;
 
   const scaleRef = buildScaleReference();
   root.add(scaleRef);
 
-  const plumes = buildPlumes(booster, ship);
+  const plumes = buildPlumes(stages);
   root.add(plumes.group);
 
   stampParts(root);
@@ -54,9 +67,9 @@ export function buildStack(version) {
   };
   setInternalsVisible(false);
 
-  const frostGroups = [booster.userData.frost, ship.userData.frost].filter(Boolean);
+  const frostGroups = stages.map((g) => g.userData.frost).filter(Boolean);
 
-  const shipBaseY = ship.position.y;
+  const stageBaseY = stages.map((g) => g.position.y);
 
   const state = { explode: 0, separation: 0, liftoff: 0 };
 
@@ -68,24 +81,31 @@ export function buildStack(version) {
       const e = o.userData.explode;
       o.position.set(base.x + e.x * t, base.y + e.y * t, base.z + e.z * t);
     });
-    // the whole ship also lifts off the booster as the view explodes
-    ship.position.y = shipBaseY + state.explode * 14 + state.separation * 42;
+    // each stage also lifts clear of the one below it — a gap per interface, so
+    // the spacing stays even however many stages the vehicle has
+    stages.forEach((g, i) => {
+      g.position.y = stageBaseY[i] + i * (state.explode * 14 + state.separation * 42);
+    });
     // the stack rises so parts that explode downwards clear the ground, and
     // again once the engines light so the plumes are not buried in it
     root.position.y = state.explode * 14 + state.liftoff * 24;
     scaleRef.position.y = -root.position.y; // the person stays on the ground
-    plumes.layout(state.separation);
+    plumes.setSeparation(state.separation);
+    plumes.layout();
   }
 
   applyTransforms();
 
   return {
     root,
-    booster,
-    ship,
+    stages,
+    stage: (id) => byStageId.get(id),
+    /** Bottom and top stages — what "separation" happens between. */
+    lower: stages[0],
+    upper: stages[stages.length - 1],
     index,
     scaleRef,
-    stackHeight: booster.userData.top + ship.userData.height,
+    stackHeight,
 
     setExplode(t) {
       state.explode = t;
@@ -106,8 +126,7 @@ export function buildStack(version) {
      */
     contentBox(target = new THREE.Box3()) {
       target.makeEmpty();
-      target.expandByObject(booster);
-      target.expandByObject(ship);
+      for (const g of stages) target.expandByObject(g);
       return target;
     },
     setInternalsVisible,
@@ -152,7 +171,12 @@ function buildScaleReference() {
 
 /* --------------------------------------------------------------- plumes --- */
 
-function buildPlumes(booster, ship) {
+/**
+ * Exhaust plumes, driven entirely by the emitters each stage builder declares.
+ * They live in their own group rather than under the stage so the framing box
+ * does not have to reason about cones that hang metres below the nozzles.
+ */
+function buildPlumes(stages) {
   const group = new THREE.Group();
   group.name = 'plumes';
 
@@ -173,39 +197,20 @@ function buildPlumes(booster, ship) {
     return m;
   };
 
-  // all 33 fire at liftoff; only the centre 3 stay lit through hot staging
-  const boosterPlumes = [];
-  const boosterRings = [
-    [ring(3, 1.25, Math.PI / 2), true],
-    [ring(10, 2.62, 0.15), false],
-    [ring(20, 3.86, 0.08), false],
-  ];
-  for (const [positions, centre] of boosterRings) {
-    for (const [x, z] of positions) {
-      const p = makePlume(0.62, centre ? 16 : 14, 0x9fd4ff);
-      p.position.set(x, booster.userData.engineExitY, z);
-      p.userData.centre = centre;
-      boosterPlumes.push(p);
+  const plumes = [];
+  stages.forEach((stageGroup, stageIndex) => {
+    for (const e of stageGroup.userData.plumes || []) {
+      const p = makePlume(e.radius, e.length, e.tint);
+      p.position.set(e.x, stageGroup.position.y + e.y, e.z);
+      p.userData.owner = stageGroup;
+      p.userData.offsetY = e.y;
+      p.userData.stageIndex = stageIndex;
+      // `hold` marks the engines that stay lit once staging begins
+      p.userData.hold = !!e.hold;
+      plumes.push(p);
       group.add(p);
     }
-  }
-
-  const shipPlumes = [];
-  const shipBaseY = ship.position.y;
-  for (const [x, z] of ring(3, 1.15, Math.PI / 2)) {
-    const p = makePlume(0.6, 11, 0xbfe2ff);
-    p.position.set(x, shipBaseY + 2.75, z);
-    p.userData.offsetY = 2.75;
-    shipPlumes.push(p);
-    group.add(p);
-  }
-  for (const [x, z] of ring(3, 2.85, -Math.PI / 2)) {
-    const p = makePlume(1.15, 15, 0xcfe9ff);
-    p.position.set(x, shipBaseY + 0.6, z);
-    p.userData.offsetY = 0.6;
-    shipPlumes.push(p);
-    group.add(p);
-  }
+  });
 
   let strength = 0;
   let separation = 0;
@@ -221,25 +226,30 @@ function buildPlumes(booster, ship) {
 
   return {
     group,
-    /** Keep the ship plumes attached as the ship translates away. */
-    layout(sep) {
-      separation = sep;
-      for (const p of shipPlumes) p.position.y = ship.position.y + p.userData.offsetY;
+    /** Keep every plume under its nozzles as the stages translate apart. */
+    layout() {
+      for (const p of plumes) p.position.y = p.userData.owner.position.y + p.userData.offsetY;
     },
     set(on) {
       strength = on ? 1 : 0;
     },
+    setSeparation(t) {
+      separation = t;
+    },
     update(dt) {
       time += dt;
       const flicker = 0.86 + Math.sin(time * 34) * 0.06 + Math.sin(time * 19.3) * 0.05;
-      // during hot staging only the booster's centre engines stay lit, while the
-      // ship's six spin up over the first moments of separation
-      const shipMix = separation > 0 ? Math.min(1, separation * 6) : strength;
-      for (const p of boosterPlumes) {
-        const mix = separation > 0 ? (p.userData.centre ? 1 : 0) : strength;
+      for (const p of plumes) {
+        let mix = strength;
+        if (separation > 0) {
+          // once staging starts the departing stages light — spinning up over
+          // the first moments — while the one below keeps only its hold engines
+          mix = p.userData.stageIndex === 0
+            ? (p.userData.hold ? 1 : 0)
+            : Math.min(1, separation * 6);
+        }
         setPlume(p, mix, flicker);
       }
-      for (const p of shipPlumes) setPlume(p, shipMix, flicker);
     },
   };
 }
