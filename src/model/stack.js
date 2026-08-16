@@ -72,6 +72,8 @@ export function buildStack(variant) {
   const stageBaseY = stages.map((g) => g.position.y);
 
   const state = { explode: 0, separation: 0, liftoff: 0 };
+  // degrees from vertical, per stage — the flight profile drives these
+  const tilt = stages.map(() => 0);
 
   function applyTransforms() {
     const t = state.explode;
@@ -84,7 +86,15 @@ export function buildStack(variant) {
     // each stage also lifts clear of the one below it — a gap per interface, so
     // the spacing stays even however many stages the vehicle has
     stages.forEach((g, i) => {
-      g.position.y = stageBaseY[i] + i * (state.explode * 14 + state.separation * 42);
+      const lift = stageBaseY[i] + i * (state.explode * 14 + state.separation * 42);
+      // a stage's origin is at its base, so rotating it there would swing the
+      // whole vehicle through an arc. Pivot about its mid-height instead, which
+      // is roughly where a real one rotates about anyway.
+      const a = tilt[i];
+      const half = g.userData.height / 2;
+      g.rotation.z = a;
+      g.position.set(Math.sin(a) * half, lift + half * (1 - Math.cos(a)), 0);
+      g.updateMatrix();
     });
     // the stack rises so parts that explode downwards clear the ground, and
     // again once the engines light so the plumes are not buried in it
@@ -111,14 +121,36 @@ export function buildStack(variant) {
       state.explode = t;
       applyTransforms();
     },
-    setSeparation(t) {
+    /**
+     * `staging: false` means the caller is driving the engines itself (the
+     * flight profile does), so the plumes should not be forced into the
+     * hot-staging pattern just because the stages are apart.
+     */
+    setSeparation(t, { staging = true } = {}) {
       state.separation = t;
+      plumes.setStaging(staging && t > 0);
       applyTransforms();
     },
     setLiftoff(t) {
       if (t === state.liftoff) return;
       state.liftoff = t;
       applyTransforms();
+    },
+    /** Tip a stage away from vertical, in radians. */
+    setStageAttitude(id, radians) {
+      const i = stages.findIndex((g) => g.userData.stageId === id);
+      if (i < 0 || tilt[i] === radians) return;
+      tilt[i] = radians;
+      applyTransforms();
+    },
+    /**
+     * Light the first `count` engines of a stage. Builders declare their
+     * emitters centre-outwards, so 3 of 33 is the centre three that actually
+     * relight, and 3 of 6 on the ship is its sea-level trio.
+     */
+    setStageEngines(id, count) {
+      const i = stages.findIndex((g) => g.userData.stageId === id);
+      if (i >= 0) plumes.setStageEngines(i, count);
     },
     /**
      * Bounds of the vehicle itself. Deliberately excludes the plume cones and
@@ -198,23 +230,29 @@ function buildPlumes(stages) {
   };
 
   const plumes = [];
+  const byStage = stages.map(() => []);
   stages.forEach((stageGroup, stageIndex) => {
     for (const e of stageGroup.userData.plumes || []) {
       const p = makePlume(e.radius, e.length, e.tint);
-      p.position.set(e.x, stageGroup.position.y + e.y, e.z);
       p.userData.owner = stageGroup;
-      p.userData.offsetY = e.y;
+      p.userData.offset = new THREE.Vector3(e.x, e.y, e.z);
       p.userData.stageIndex = stageIndex;
       // `hold` marks the engines that stay lit once staging begins
       p.userData.hold = !!e.hold;
       plumes.push(p);
+      byStage[stageIndex].push(p);
       group.add(p);
     }
   });
 
-  let strength = 0;
+  // how many engines each stage is running, set either by the "Engines lit"
+  // toggle (all or none) or by the flight profile (a specific count)
+  const lit = stages.map(() => 0);
+  const holdCount = byStage.map((ps) => ps.filter((p) => p.userData.hold).length);
   let separation = 0;
+  let staging = false;
   let time = 0;
+  const _v = new THREE.Vector3();
 
   const setPlume = (p, mix, flicker) => {
     p.visible = mix > 0.01;
@@ -226,30 +264,44 @@ function buildPlumes(stages) {
 
   return {
     group,
-    /** Keep every plume under its nozzles as the stages translate apart. */
+    /**
+     * Re-seat every plume under its nozzles. Taken through the owning stage's
+     * matrix rather than its y alone, so a plume still points along the vehicle
+     * when the flight profile has the stage flipped for a boostback burn.
+     */
     layout() {
-      for (const p of plumes) p.position.y = p.userData.owner.position.y + p.userData.offsetY;
+      for (const p of plumes) {
+        const owner = p.userData.owner;
+        p.position.copy(_v.copy(p.userData.offset).applyMatrix4(owner.matrix));
+        p.rotation.z = owner.rotation.z;
+      }
     },
     set(on) {
-      strength = on ? 1 : 0;
+      byStage.forEach((ps, i) => (lit[i] = on ? ps.length : 0));
+    },
+    setStageEngines(i, count) {
+      lit[i] = Math.max(0, Math.min(byStage[i].length, count));
     },
     setSeparation(t) {
       separation = t;
     },
+    setStaging(on) {
+      staging = on;
+    },
     update(dt) {
       time += dt;
       const flicker = 0.86 + Math.sin(time * 34) * 0.06 + Math.sin(time * 19.3) * 0.05;
-      for (const p of plumes) {
-        let mix = strength;
-        if (separation > 0) {
-          // once staging starts the departing stages light — spinning up over
-          // the first moments — while the one below keeps only its hold engines
-          mix = p.userData.stageIndex === 0
-            ? (p.userData.hold ? 1 : 0)
-            : Math.min(1, separation * 6);
+      byStage.forEach((ps, i) => {
+        let count = lit[i];
+        let intensity = 1;
+        // the staging animation overrides: below the interface only the hold
+        // engines stay lit, above it the departing stage spins up
+        if (staging) {
+          count = i === 0 ? holdCount[i] : ps.length;
+          if (i > 0) intensity = Math.min(1, separation * 6);
         }
-        setPlume(p, mix, flicker);
-      }
+        ps.forEach((p, j) => setPlume(p, j < count ? intensity : 0, flicker));
+      });
     },
   };
 }

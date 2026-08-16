@@ -194,12 +194,19 @@ export function createUI(handlers) {
       'the tanks, bulkheads and downcomers inside.';
     infoBody.appendChild(hint);
 
-    // the part list answers "what is this?"; the tours answer "why is it like
-    // that?", so the overview is where to offer them
-    const cta = el('button', 'tour-cta', 'Take a guided tour →');
-    cta.type = 'button';
-    cta.addEventListener('click', () => handlers.onTours());
-    infoBody.appendChild(cta);
+    // the part list answers "what is this?"; the tours and the flight profile
+    // answer "why is it like that?", so the overview is where to offer them
+    const ctas = el('div', 'cta-row');
+    for (const [label, fn] of [
+      ['Take a guided tour →', handlers.onTours],
+      ['Fly the mission →', handlers.onFlight],
+    ]) {
+      const b = el('button', 'tour-cta', label);
+      b.type = 'button';
+      b.addEventListener('click', () => fn());
+      ctas.appendChild(b);
+    }
+    infoBody.appendChild(ctas);
   }
 
   function showPart(p, variant) {
@@ -291,6 +298,17 @@ export function createUI(handlers) {
          <li>Click any surface to select that component.</li>
          <li>Use the camera presets to jump to a section of the vehicle.</li>
        </ul>
+       <h3>Flying the profile</h3>
+       <ul>
+         <li><strong>Fly it</strong> opens the Flight 5 timeline — startup through the tower catch
+             and the ship's landing burn, 66 minutes in fifteen events. Scrub it, or press play.</li>
+         <li>The vehicle actually flies it: engines light and shut down in the right counts, the
+             booster flips for the boostback burn, the ship holds its belly-first attitude through
+             entry and stands up for the flip.</li>
+         <li>Step with <kbd>→</kbd> and <kbd>←</kbd>, play or pause with <kbd>Space</kbd>. The
+             exploded view, the engines toggle and the separation button belong to the profile
+             while it is open.</li>
+       </ul>
        <h3>Guided tours</h3>
        <ul>
          <li><strong>Tours</strong> walks you through one idea at a time — why it hot-stages, why
@@ -326,7 +344,7 @@ export function createUI(handlers) {
        ${keyRow('F', 'Toggle engines lit')}
        ${keyRow('G', 'Toggle cryo frost')}
        ${keyRow('Space', 'Play separation')}
-       ${keyRow('← →', 'Step a guided tour')}
+       ${keyRow('← →', 'Step a tour or the flight profile')}
        ${keyRow('Esc', 'Deselect')}
        <h3>Sharing and embedding</h3>
        <ul>
@@ -351,6 +369,10 @@ export function createUI(handlers) {
       `<p>Every figure in this app comes from publicly available material. Numbers SpaceX has
         never formally published are shown with a “≈”.</p>
        <ul>${SOURCES.map((s) => `<li><a href="${s.url}" target="_blank" rel="noopener">${s.label}</a></li>`).join('')}</ul>
+       <h3>Flight timeline</h3>
+       <p>The times in <strong>Fly it</strong> are SpaceX's own published Flight 5 timeline
+       (13 October 2024, the first tower catch). Altitude and speed at each event are approximate.
+       The vehicle drawn is whichever generation you have selected, flying that profile.</p>
        <h3>Note</h3>
        <p>Figures last checked against these sources in <strong>${LAST_VERIFIED}</strong>.
        Starship is an actively evolving vehicle and public numbers shift between test flights, so

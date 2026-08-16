@@ -1261,3 +1261,185 @@ body[data-tour] .hud-topleft {
 .tour-cta:hover {
   background: rgba(77, 210, 255, 0.26);
 }
+
+/* --------------------------------------------------------------- flight -- */
+
+.flight {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 12px 16px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: rgba(10, 15, 24, 0.93);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+}
+
+.flight[hidden] {
+  display: none;
+}
+
+.flight-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.flight-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flight-clock {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.flight-tele {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.flight-scrubber {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.flight-play {
+  min-width: 78px;
+}
+
+.flight-play[data-playing='true'] {
+  background: #ff7a59;
+}
+
+/* the ticks sit under the thumb, so the track has to be its own stacking box */
+.flight-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+}
+
+.flight-track input[type='range'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  z-index: 2;
+}
+
+.flight-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0;
+  pointer-events: none;
+}
+
+.flight-tick {
+  position: absolute;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--line-strong);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: 0.15s;
+}
+
+.flight-tick:hover {
+  background: var(--text-dim);
+  transform: scale(1.25);
+}
+
+.flight-tick[data-on='true'] {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(77, 210, 255, 0.2);
+}
+
+.flight-caption {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.flight-caption strong {
+  color: var(--text);
+  margin-right: 8px;
+}
+
+/* the flight profile owns these while it is running */
+.controlbar input:disabled + span,
+.controlbar label:has(input:disabled) {
+  opacity: 0.4;
+}
+
+.controlbar button:disabled,
+.controlbar input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+body[data-flight] .hud-topleft {
+  opacity: 0.45;
+}
+
+@media (max-width: 860px) {
+  .flight {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    padding: 10px 12px 12px;
+    gap: 9px;
+  }
+
+  .flight-name {
+    display: none;
+  }
+
+  .flight-caption {
+    font-size: 12.5px;
+    max-height: 22dvh;
+    overflow-y: auto;
+  }
+}
+
+.cta-row {
+  display: grid;
+  gap: 8px;
+}
+
+.cta-row .tour-cta {
+  margin-top: 0;
+}
+
+.cta-row {
+  margin-top: 14px;
+}

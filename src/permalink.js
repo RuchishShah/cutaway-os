@@ -22,6 +22,7 @@ export function readState(search = window.location.search) {
     part: q.get('part') || undefined,
     tour: q.get('tour') || undefined,
     step: num('step'),
+    flight: num('flight'),
     light: q.get('light') || undefined,
     quality: q.get('q') || undefined,
     cutaway: bool('cut'),
@@ -60,6 +61,7 @@ export function toQuery(state, defaults = {}) {
   put('tour', state.tour, undefined);
   // step 1 is implied by the tour id alone
   if (state.tour && state.step > 1) q.set('step', String(state.step));
+  if (Number.isFinite(state.flight)) q.set('flight', String(NUM(state.flight, 2)));
   put('light', state.light, defaults.light);
   put('cut', state.cutaway, false);
   put('labels', state.labels, false);

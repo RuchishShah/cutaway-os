@@ -61,6 +61,7 @@
 
         <div class="topbar-actions">
           <button class="ghost-btn accent-btn" id="btn-tours" type="button">Tours</button>
+          <button class="ghost-btn accent-btn" id="btn-flight" type="button">Fly it</button>
           <button class="ghost-btn" id="btn-share" type="button">Share view</button>
           <button class="ghost-btn" id="btn-sources" type="button">Sources</button>
           <button class="ghost-btn" id="btn-help" type="button" aria-keyshortcuts="?">Help</button>
@@ -113,6 +114,27 @@
               <div class="tour-dots" id="tour-dots"></div>
               <button class="primary-btn" id="tour-next" type="button">Next →</button>
             </div>
+          </aside>
+
+          <aside class="flight" id="flight" aria-label="Flight profile" hidden>
+            <div class="flight-head">
+              <span class="flight-name" id="flight-name"></span>
+              <span class="flight-clock" id="flight-clock"></span>
+              <span class="flight-tele" id="flight-tele"></span>
+              <button class="icon-btn" id="flight-exit" type="button" aria-label="Close the flight profile">×</button>
+            </div>
+            <div class="flight-scrubber">
+              <button class="primary-btn flight-play" id="flight-play" type="button">Play</button>
+              <div class="flight-track">
+                <input type="range" id="flight-scrub" min="0" max="100" value="0" step="1"
+                       aria-label="Mission phase" />
+                <div class="flight-ticks" id="flight-ticks"></div>
+              </div>
+            </div>
+            <p class="flight-caption" role="status" aria-live="polite">
+              <strong id="flight-label"></strong>
+              <span id="flight-detail"></span>
+            </p>
           </aside>
 
           <div class="boot-error" id="boot-error" hidden>

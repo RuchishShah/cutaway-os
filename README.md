@@ -33,6 +33,7 @@ push to `main` publishes.
 
 | | |
 |---|---|
+| **Fly it** (`Space`, `←` `→`) | The published Flight 5 timeline — startup, max Q, hot staging, boostback, the tower catch, entry, belly-flop, the flip — as a scrubbable strip. The vehicle flies it: engine counts, stage separation and attitude all track the clock. |
 | **Guided tours** (`←` `→`) | Four narrated walks — why it hot-stages, why it is stainless steel, inside a Raptor, how both halves come back. The camera, the cutaway and the exploded view move with the text, and a shared link lands on the exact step. |
 | **Orbit / zoom / pan** | Drag, scroll or pinch, right-drag. You can go under the vehicle to look up into the engine bay. |
 | **Click a part** | Any surface in the 3D view, or any entry in the left-hand component list. The right panel shows what it is and its published figures. |
@@ -171,8 +172,10 @@ src/
   quality.js               render tiers and device detection
   ui.js                    part list, info panel, modals, mobile drawers
   tour.js                  guided-tour controller (drives the viewer, knows no data)
+  flight.js                flight-profile scrubber: clock, timeline, playback
   data/vehicle.js          vehicles, variants, stages, engines, parts — the source of truth
   data/tours.js            tour scripts, as pure data
+  data/profile.js          mission timeline: events, telemetry, per-stage vehicle state
   model/
     builders.js            stage id → geometry builder; the seam for new vehicles
     materials.js           procedural texture sets, PBR materials, cutaway plane

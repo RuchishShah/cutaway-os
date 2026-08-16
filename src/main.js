@@ -19,6 +19,7 @@ import { quality, setQuality, detectQuality, TIERS } from './quality.js';
 import { TIME_PRESETS, DEFAULT_PRESET } from './environment.js';
 import { readState, syncUrl, buildUrl } from './permalink.js';
 import { createTours } from './tour.js';
+import { createFlight } from './flight.js';
 
 const urlState = readState();
 const URL_DEFAULTS = { version: DEFAULT_VARIANT, light: DEFAULT_PRESET };
@@ -67,6 +68,7 @@ const ui = createUI({
   onSelect: (id) => selectPart(id, { focus: true }),
   onPreset: (id) => applyPreset(id),
   onTours: () => tours.openLauncher(variant),
+  onFlight: () => flight.open(variant),
 });
 
 // The tour controller drives the viewer through the host callbacks below; it
@@ -82,7 +84,63 @@ const tours = createTours({
   onChange: () => updateReadout(),
 });
 
+// The flight profile takes over the vehicle's engines, attitude and staging
+// for as long as it is open, so the controls that would fight it are disabled.
+const flight = createFlight({
+  applySample: (sample, entered) => applyFlightSample(sample, entered),
+  onEnter: () => {
+    tours.exit();
+    setModes({ explode: 0 });
+    setSeparating(false);
+    setFlightControlsEnabled(false);
+  },
+  onExit: () => {
+    setFlightControlsEnabled(true);
+    for (const stage of variant.stages) {
+      stack.setStageAttitude(stage.id, 0);
+      stack.setStageEngines(stage.id, 0);
+    }
+    stack.setSeparation(0);
+    setEnginesLit(tgEngines.checked);
+  },
+  onChange: () => updateReadout(),
+});
+
 document.getElementById('btn-tours').addEventListener('click', () => tours.openLauncher(variant));
+document.getElementById('btn-flight').addEventListener('click', () =>
+  flight.isActive() ? flight.close() : flight.open(variant)
+);
+
+function setFlightControlsEnabled(on) {
+  for (const el of [slExplode, tgEngines, document.getElementById('btn-separate')]) {
+    el.disabled = !on;
+  }
+}
+
+/**
+ * Map one sampled instant of the flight profile onto the model. Attitude and
+ * engine counts are continuous, so they move on every scrub; the camera and the
+ * selected part only change when the scrubber crosses into a new event, or
+ * dragging the slider would fling the camera around.
+ */
+function applyFlightSample(sample, entered) {
+  stack.setSeparation(sample.sep, { staging: false });
+  for (const stage of variant.stages) {
+    stack.setStageEngines(stage.id, sample.engines[stage.id] ?? 0);
+    stack.setStageAttitude(stage.id, ((sample.pitch[stage.id] ?? 0) * Math.PI) / 180);
+  }
+  // Lift the stack clear of the ground as it climbs. Driven straight off the
+  // sampled altitude rather than the usual tween, because the camera framing
+  // below is computed from the pose — a tween would leave it aiming 24 m low.
+  liftoff = liftoffTarget = Math.max(0, Math.min(1, sample.altitude / 4));
+  stack.setLiftoff(liftoff);
+
+  if (entered) {
+    selectPart(sample.event.part || null);
+    if (sample.event.view) applyPreset(sample.event.view);
+  }
+  updateReadout();
+}
 
 /* ------------------------------------------------------------ build cycle -- */
 
@@ -126,6 +184,10 @@ function rebuild() {
 
   if (keep && stack.index.has(keep)) applyHighlight(keep);
   else state.selected = keep && stack.index.has(keep) ? keep : state.selected;
+
+  // a version switch rebuilds the model from scratch, which drops the pose the
+  // flight profile had put it in
+  flight.refresh();
 
   updateReadout();
 }
@@ -283,6 +345,10 @@ function applyExplode(t) {
 
 function applyPreset(id) {
   const box = new THREE.Box3();
+  // Box3.setFromObject does not refresh ancestors, and the stack's own
+  // position moves with explode and altitude — so without this the framing is
+  // computed against wherever the stack was on the last rendered frame.
+  stack.root.updateMatrixWorld(true);
 
   // "stage:<id>" frames one stage, whichever stages this vehicle happens to have
   if (id.startsWith('stage:')) {
@@ -290,6 +356,16 @@ function applyPreset(id) {
     if (!group) return;
     box.setFromObject(group);
     viewer.frameBox(box, { padding: 1.08, elevation: 0.12 });
+    return;
+  }
+
+  // "engines:<id>" frames a named stage's cluster — the flight profile needs
+  // the ship's engines on the way down, not the booster's
+  if (id.startsWith('engines:')) {
+    const group = stack.stage(id.slice('engines:'.length))?.userData.engineGroup;
+    if (!group) return;
+    box.setFromObject(group);
+    viewer.frameBox(box, { padding: 1.15, elevation: -0.42 });
     return;
   }
 
@@ -416,6 +492,7 @@ function currentState({ camera = true } = {}) {
     explode: state.explode,
     embed: urlState.embed,
     ...tours.state(),
+    ...flight.state(),
     cam: camera ? viewer.getCamera() : undefined,
   };
 }
@@ -604,6 +681,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   setEnginesLit(false);
   setSeparating(false);
   tours.exit();
+  flight.close();
   selectPart(null);
   applyPreset('stack');
 });
@@ -613,6 +691,26 @@ document.getElementById('btn-reset').addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
   if (ui.isModalOpen() && e.key !== 'Escape') return;
+
+  // the flight profile claims the transport keys while it is open
+  if (flight.isActive() && !e.target.closest?.('#part-list')) {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      return flight.step(1);
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      return flight.step(-1);
+    }
+    if (e.key === ' ') {
+      e.preventDefault();
+      return flight.togglePlay();
+    }
+    if (e.key === 'Escape' && !ui.isModalOpen()) {
+      e.preventDefault();
+      return flight.close();
+    }
+  }
 
   // a running tour claims the arrow keys, except inside the component list,
   // which uses them to move the selection
@@ -727,6 +825,7 @@ function animate() {
   }
 
   watchPerformance(dt);
+  flight.update(dt);
   stack.updatePlumes(dt);
   viewer.updateTween(dt);
   // drop the ground away when the camera goes under the vehicle
@@ -781,15 +880,19 @@ if (Number.isFinite(urlState.explode) && urlState.explode > 0) {
   applyExplode(t / 100);
 }
 
-// a shared tour link should land on its step, not replay from the beginning
+// a shared tour or flight link should land where it pointed, not replay from
+// the beginning
 const wantedTour = urlState.tour ? tours.start(urlState.tour, (urlState.step || 1) - 1) : false;
+const wantedFlight =
+  Number.isFinite(urlState.flight) && !wantedTour ? flight.open(variant, urlState.flight) : false;
 
-const wantedPart = !wantedTour && urlState.part && PART_BY_ID[urlState.part] ? urlState.part : null;
+const wantedPart =
+  !wantedTour && !wantedFlight && urlState.part && PART_BY_ID[urlState.part] ? urlState.part : null;
 if (wantedPart) selectPart(wantedPart, { focus: !urlState.cam });
 else ui.showVehicle(variant);
 
 if (urlState.cam) viewer.setCamera(urlState.cam);
-else if (!wantedPart && !wantedTour) applyPreset('stack');
+else if (!wantedPart && !wantedTour && !wantedFlight) applyPreset('stack');
 
 updateEmbedTitle();
 animate();
@@ -812,4 +915,5 @@ window.starshipExplorer = {
   select: (id) => selectPart(id, { focus: true }),
   preset: applyPreset,
   tours,
+  flight,
 };
