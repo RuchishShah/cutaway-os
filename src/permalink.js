@@ -20,6 +20,8 @@ export function readState(search = window.location.search) {
   const state = {
     version: q.get('v') || undefined,
     part: q.get('part') || undefined,
+    tour: q.get('tour') || undefined,
+    step: num('step'),
     light: q.get('light') || undefined,
     quality: q.get('q') || undefined,
     cutaway: bool('cut'),
@@ -55,6 +57,9 @@ export function toQuery(state, defaults = {}) {
 
   put('v', state.version, defaults.version);
   put('part', state.part, undefined);
+  put('tour', state.tour, undefined);
+  // step 1 is implied by the tour id alone
+  if (state.tour && state.step > 1) q.set('step', String(state.step));
   put('light', state.light, defaults.light);
   put('cut', state.cutaway, false);
   put('labels', state.labels, false);

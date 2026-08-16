@@ -193,6 +193,13 @@ export function createUI(handlers) {
       'Click any part in the 3D view to inspect it. Turn on <strong>Cutaway</strong> to see ' +
       'the tanks, bulkheads and downcomers inside.';
     infoBody.appendChild(hint);
+
+    // the part list answers "what is this?"; the tours answer "why is it like
+    // that?", so the overview is where to offer them
+    const cta = el('button', 'tour-cta', 'Take a guided tour →');
+    cta.type = 'button';
+    cta.addEventListener('click', () => handlers.onTours());
+    infoBody.appendChild(cta);
   }
 
   function showPart(p, variant) {
@@ -284,6 +291,15 @@ export function createUI(handlers) {
          <li>Click any surface to select that component.</li>
          <li>Use the camera presets to jump to a section of the vehicle.</li>
        </ul>
+       <h3>Guided tours</h3>
+       <ul>
+         <li><strong>Tours</strong> walks you through one idea at a time — why it hot-stages, why
+             it is steel, what is happening inside a Raptor, how both halves come back. The
+             camera and the modes move with the text.</li>
+         <li>Step with <kbd>→</kbd> and <kbd>←</kbd>, leave with <kbd>Esc</kbd>. You can orbit and
+             click parts at any point without losing your place.</li>
+         <li>Sharing while a tour is open links to that exact step.</li>
+       </ul>
        <h3>Modes</h3>
        <ul>
          <li><strong>Cutaway</strong> slices the vehicle down its centreline and reveals the
@@ -310,6 +326,7 @@ export function createUI(handlers) {
        ${keyRow('F', 'Toggle engines lit')}
        ${keyRow('G', 'Toggle cryo frost')}
        ${keyRow('Space', 'Play separation')}
+       ${keyRow('← →', 'Step a guided tour')}
        ${keyRow('Esc', 'Deselect')}
        <h3>Sharing and embedding</h3>
        <ul>

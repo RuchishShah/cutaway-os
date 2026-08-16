@@ -18,6 +18,7 @@ import {
 import { quality, setQuality, detectQuality, TIERS } from './quality.js';
 import { TIME_PRESETS, DEFAULT_PRESET } from './environment.js';
 import { readState, syncUrl, buildUrl } from './permalink.js';
+import { createTours } from './tour.js';
 
 const urlState = readState();
 const URL_DEFAULTS = { version: DEFAULT_VARIANT, light: DEFAULT_PRESET };
@@ -65,7 +66,23 @@ const ui = createUI({
   onVersion: (id) => setVersion(id),
   onSelect: (id) => selectPart(id, { focus: true }),
   onPreset: (id) => applyPreset(id),
+  onTours: () => tours.openLauncher(variant),
 });
+
+// The tour controller drives the viewer through the host callbacks below; it
+// knows nothing about three.js or the vehicle data.
+const tours = createTours({
+  ui,
+  selectPart: (id, opts) => selectPart(id, opts),
+  applyPreset: (id) => applyPreset(id),
+  setCamera: (cam) => viewer.setCamera(cam),
+  setModes: (m) => setModes(m),
+  playSeparation: () => setSeparating(true),
+  stopSeparation: () => setSeparating(false),
+  onChange: () => updateReadout(),
+});
+
+document.getElementById('btn-tours').addEventListener('click', () => tours.openLauncher(variant));
 
 /* ------------------------------------------------------------ build cycle -- */
 
@@ -80,6 +97,7 @@ function setVersion(id) {
   if (state.selected && PART_BY_ID[state.selected]) ui.showPart(PART_BY_ID[state.selected], variant);
   else ui.showVehicle(variant);
 }
+
 
 function rebuild() {
   const keep = state.selected;
@@ -225,7 +243,9 @@ function selectPart(id, { focus = false } = {}) {
       applyCutaway(true);
     }
     if (focus) focusOnPart(id);
-    if (window.matchMedia('(max-width: 860px)').matches) ui.openInfoDrawer();
+    // during a tour the narration panel is the thing to read; sliding the info
+    // drawer over it on a phone would bury it
+    if (!tours.isActive() && window.matchMedia('(max-width: 860px)').matches) ui.openInfoDrawer();
   } else {
     ui.showVehicle(variant);
   }
@@ -312,21 +332,18 @@ function setEnginesLit(on) {
 /* ------------------------------------------------------------- separation -- */
 
 let sepT = 0;
-function playSeparation() {
-  if (state.separating) {
-    state.separating = false;
-    sepT = 0;
-    state.separation = 0;
-    stack.setSeparation(0);
-    document.getElementById('btn-separate').dataset.active = 'false';
-    document.getElementById('btn-separate').textContent = 'Hot-stage separation';
-    updateReadout();
-    return;
-  }
-  state.separating = true;
+
+/** Explicit rather than a toggle, so a tour step can restart it from anywhere. */
+function setSeparating(on) {
+  const btn = document.getElementById('btn-separate');
   sepT = 0;
-  document.getElementById('btn-separate').dataset.active = 'true';
-  document.getElementById('btn-separate').textContent = 'Stop separation';
+  state.separation = 0;
+  state.separating = on;
+  stack.setSeparation(0);
+  btn.dataset.active = String(on);
+  btn.textContent = on ? 'Stop separation' : 'Hot-stage separation';
+  updateReadout();
+  if (!on) return;
 
   // frame the whole staging event: the interface through where the upper stage
   // ends up
@@ -335,6 +352,38 @@ function playSeparation() {
   box.min.y = mid - 55;
   box.max.y = mid + stack.upper.userData.height + 46;
   viewer.frameBox(box, { padding: 1.05, elevation: 0.08 });
+}
+
+const playSeparation = () => setSeparating(!state.separating);
+
+/**
+ * Apply a partial set of viewer modes, keeping the controls in step. Anything
+ * the caller leaves out stays exactly as the reader had it.
+ */
+function setModes(m = {}) {
+  if (m.cutaway !== undefined) {
+    tgCutaway.checked = m.cutaway;
+    applyCutaway(m.cutaway);
+  }
+  if (m.explode !== undefined) {
+    const pct = Math.round(m.explode * 100);
+    slExplode.value = String(pct);
+    outExplode.textContent = `${pct}%`;
+    applyExplode(m.explode);
+  }
+  if (m.engines !== undefined) {
+    tgEngines.checked = m.engines;
+    setEnginesLit(m.engines);
+  }
+  if (m.frost !== undefined) {
+    tgFrost.checked = m.frost;
+    stack.setFrost(m.frost);
+  }
+  if (m.labels !== undefined) {
+    tgLabels.checked = m.labels;
+    state.labels = m.labels;
+    refreshLabels();
+  }
 }
 
 /* ---------------------------------------------------------------- embed --- */
@@ -366,6 +415,7 @@ function currentState({ camera = true } = {}) {
     engines: tgEngines?.checked ?? false,
     explode: state.explode,
     embed: urlState.embed,
+    ...tours.state(),
     cam: camera ? viewer.getCamera() : undefined,
   };
 }
@@ -552,7 +602,8 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   applyCutaway(false);
   tgEngines.checked = false;
   setEnginesLit(false);
-  if (state.separating) playSeparation();
+  setSeparating(false);
+  tours.exit();
   selectPart(null);
   applyPreset('stack');
 });
@@ -562,6 +613,23 @@ document.getElementById('btn-reset').addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
   if (ui.isModalOpen() && e.key !== 'Escape') return;
+
+  // a running tour claims the arrow keys, except inside the component list,
+  // which uses them to move the selection
+  if (tours.isActive() && !e.target.closest?.('#part-list')) {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      return tours.next();
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      return tours.prev();
+    }
+    if (e.key === 'Escape' && !ui.isModalOpen()) {
+      e.preventDefault();
+      return tours.exit();
+    }
+  }
 
   const view = ui.views().find((v) => v.key === e.key);
   if (view) return applyPreset(view.id);
@@ -713,12 +781,15 @@ if (Number.isFinite(urlState.explode) && urlState.explode > 0) {
   applyExplode(t / 100);
 }
 
-const wantedPart = urlState.part && PART_BY_ID[urlState.part] ? urlState.part : null;
+// a shared tour link should land on its step, not replay from the beginning
+const wantedTour = urlState.tour ? tours.start(urlState.tour, (urlState.step || 1) - 1) : false;
+
+const wantedPart = !wantedTour && urlState.part && PART_BY_ID[urlState.part] ? urlState.part : null;
 if (wantedPart) selectPart(wantedPart, { focus: !urlState.cam });
 else ui.showVehicle(variant);
 
 if (urlState.cam) viewer.setCamera(urlState.cam);
-else if (!wantedPart) applyPreset('stack');
+else if (!wantedPart && !wantedTour) applyPreset('stack');
 
 updateEmbedTitle();
 animate();
@@ -740,4 +811,5 @@ window.starshipExplorer = {
   },
   select: (id) => selectPart(id, { focus: true }),
   preset: applyPreset,
+  tours,
 };

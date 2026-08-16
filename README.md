@@ -33,13 +33,14 @@ push to `main` publishes.
 
 | | |
 |---|---|
+| **Guided tours** (`←` `→`) | Four narrated walks — why it hot-stages, why it is stainless steel, inside a Raptor, how both halves come back. The camera, the cutaway and the exploded view move with the text, and a shared link lands on the exact step. |
 | **Orbit / zoom / pan** | Drag, scroll or pinch, right-drag. You can go under the vehicle to look up into the engine bay. |
 | **Click a part** | Any surface in the 3D view, or any entry in the left-hand component list. The right panel shows what it is and its published figures. |
 | **Cutaway** (`X`) | Slices the stack down its centreline: main LOX and methane tanks, common bulkheads, downcomers and the nose header tanks. |
 | **Exploded** (`E`) | Separates every assembly along its mounting axis. |
 | **Hot-stage separation** (`Space`) | Plays the staging event — the ship lights its engines while still attached and flies off the booster. |
 | **Version switch** | Block 1 / 2 / 3. Heights, grid fin count and layout, hot-stage design, engine generation and all specs change with it. |
-| **Camera presets** (`1`–`5`) | Full stack, ship, booster, engine bay, nose. |
+| **Camera presets** (`1`–`5`) | Full stack, then one per stage, then engine bay and nose — generated from the vehicle's stage list, not a fixed set. |
 | **Cryo frost** (`G`) | Rime over the loaded tanks. The frost line is also a readout of where each tank sits. |
 | **Light** | Golden hour / midday / dawn / blue hour. The sun moves and the whole scene relights. |
 | **Quality** | Ultra / High / Balanced / Fast — mesh density, texture size, shadows, AO, bloom. Auto-picked from your device. |
@@ -169,12 +170,15 @@ src/
   environment.js           physical sky, PMREM probe, sun/fill/bounce, time of day
   quality.js               render tiers and device detection
   ui.js                    part list, info panel, modals, mobile drawers
-  data/vehicle.js          all specs and part copy — the single source of truth
+  tour.js                  guided-tour controller (drives the viewer, knows no data)
+  data/vehicle.js          vehicles, variants, stages, engines, parts — the source of truth
+  data/tours.js            tour scripts, as pure data
   model/
+    builders.js            stage id → geometry builder; the seam for new vehicles
     materials.js           procedural texture sets, PBR materials, cutaway plane
     helpers.js             shared primitives (ogive, dome, Raptor, grid fin, flap, frost)
-    booster.js             Super Heavy
-    ship.js                Starship upper stage
+    super-heavy.js         Super Heavy
+    starship-upper.js      Starship upper stage
     stack.js               assembly, part index, explode / separation / plumes
   permalink.js             URL state: read, serialise, sync
 parts/                     generated reference pages (build-pages.mjs)
