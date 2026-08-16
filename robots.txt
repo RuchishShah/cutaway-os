@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://ruchishshah.github.io/cutaway-os/sitemap.xml

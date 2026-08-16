@@ -1,0 +1,191 @@
+/* Styles for the static reference pages under /parts/.
+   They reuse the app's tokens but are documents, not an app shell: scrollable,
+   readable at any width, and legible without JavaScript. */
+
+body.doc {
+  height: auto;
+  overflow: auto;
+  background:
+    radial-gradient(ellipse at 50% -10%, #16233a 0%, transparent 60%),
+    var(--bg);
+  line-height: 1.6;
+}
+
+.doc-wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 22px 64px;
+}
+
+.doc-nav {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 30px;
+}
+
+.doc-nav a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.doc-nav a:hover {
+  color: var(--accent);
+}
+
+.doc-nav span {
+  opacity: 0.4;
+  margin: 0 6px;
+}
+
+.doc-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.doc h1 {
+  margin: 8px 0 14px;
+  font-size: clamp(26px, 5vw, 36px);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.doc h2 {
+  margin: 38px 0 12px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.doc-sub {
+  font-weight: 400;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.doc-lead {
+  font-size: 15.5px;
+  color: var(--text-dim);
+  margin: 0 0 24px;
+}
+
+.doc p {
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.doc a {
+  color: var(--accent);
+}
+
+.doc strong {
+  color: var(--text);
+}
+
+.doc a.doc-cta {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #062533;
+  font-weight: 650;
+  font-size: 13.5px;
+  text-decoration: none;
+}
+
+.doc a.doc-cta:hover {
+  filter: brightness(1.1);
+}
+
+.doc .spec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.doc .spec-table td {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.doc .spec-table td:first-child {
+  color: var(--text-faint);
+  width: 45%;
+  padding-right: 14px;
+}
+
+.doc .spec-table td:last-child {
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.doc a.doc-cta {
+  color: #062533;
+}
+
+.doc-list a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+}
+
+.doc-list a:hover {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: var(--line);
+}
+
+.doc-list strong {
+  font-weight: 550;
+  font-size: 14px;
+}
+
+.doc-list span {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.doc-foot {
+  margin-top: 52px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.doc-foot ul {
+  padding-left: 18px;
+  margin: 10px 0 0;
+}
+
+.doc-foot li {
+  margin-bottom: 4px;
+}
+
+.doc-foot a {
+  color: var(--text-dim);
+}

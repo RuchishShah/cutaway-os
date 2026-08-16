@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>CutawayOS — take a rocket apart in 3D</title>
+    <meta
+      name="description"
+      content="Take a rocket apart and see how it works. An interactive 3D cutaway of SpaceX's Starship and Super Heavy, built from publicly available information — every major component, what it does, and the published numbers."
+    />
+    <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href="https://ruchishshah.github.io/cutaway-os/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CutawayOS" />
+    <meta property="og:title" content="CutawayOS — take a rocket apart in 3D" />
+    <meta
+      property="og:description"
+      content="An interactive 3D cutaway of SpaceX's Starship and Super Heavy. Click any component for what it does and its published figures, slice the vehicle open, compare Block 1, 2 and 3."
+    />
+    <meta property="og:url" content="https://ruchishshah.github.io/cutaway-os/" />
+    <meta property="og:image" content="https://ruchishshah.github.io/cutaway-os/share/cover.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A 3D render of the full Starship stack on its launch pad at golden hour." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CutawayOS — take a rocket apart in 3D" />
+    <meta
+      name="twitter:description"
+      content="Explore SpaceX's Starship and Super Heavy in 3D. Every major component, with the published numbers and where they came from."
+    />
+    <meta name="twitter:image" content="https://ruchishshah.github.io/cutaway-os/share/cover.png" />
+    <link rel="stylesheet" href="./styles/main.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%9A%80%3C/text%3E%3C/svg%3E"
+    />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.js",
+          "three/addons/": "./vendor/three/addons/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>CutawayOS</h1>
+            <p>Take a rocket apart · SpaceX fleet · public sources</p>
+          </div>
+        </div>
+
+        <div class="version-switch" role="tablist" aria-label="Vehicle generation">
+          <!-- populated by ui.js -->
+        </div>
+
+        <div class="topbar-actions">
+          <button class="ghost-btn" id="btn-share" type="button">Share view</button>
+          <button class="ghost-btn" id="btn-sources" type="button">Sources</button>
+          <button class="ghost-btn" id="btn-help" type="button" aria-keyshortcuts="?">Help</button>
+          <button class="ghost-btn only-mobile" id="btn-parts" type="button">Parts</button>
+        </div>
+      </header>
+
+      <main class="stage">
+        <aside class="panel panel-left" id="panel-parts" aria-label="Parts list">
+          <div class="panel-head">
+            <h2>Components</h2>
+            <button class="icon-btn only-mobile" data-close="panel-parts" aria-label="Close">×</button>
+          </div>
+          <div class="part-list" id="part-list" role="listbox" aria-label="Vehicle components" tabindex="0"></div>
+          <p class="panel-foot">
+            Click a part in the 3D view or in this list. Internal parts appear when
+            <strong>Cutaway</strong> is on.
+          </p>
+        </aside>
+
+        <div class="embed-bar" id="embed-bar" hidden>
+          <span class="embed-title" id="embed-title">CutawayOS</span>
+          <a class="embed-link" id="embed-link" href="./" target="_blank" rel="noopener">
+            Open full view ↗
+          </a>
+        </div>
+
+        <div class="viewport" id="viewport" role="application" aria-label="3D vehicle view. Use the component list to select parts with the keyboard.">
+          <div class="hud hud-topleft">
+            <div class="readout" id="readout" aria-hidden="true"></div>
+          </div>
+          <div class="loading" id="loading" role="status" aria-live="polite">
+            <div class="loading-inner">
+              <div class="spinner" aria-hidden="true"></div>
+              <p>Building the vehicle…</p>
+            </div>
+          </div>
+          <div class="boot-error" id="boot-error" hidden>
+            <div>
+              <h2>Could not start the 3D view</h2>
+              <p id="boot-error-msg">
+                This page needs a browser with WebGL 2 enabled. Try a different browser, or
+                enable hardware acceleration and reload.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <aside class="panel panel-right" id="panel-info" aria-label="Part information">
+          <div class="panel-head">
+            <h2 id="info-title">Vehicle</h2>
+            <button class="icon-btn only-mobile" data-close="panel-info" aria-label="Close">×</button>
+          </div>
+          <div class="info-body" id="info-body" role="region" aria-live="polite" aria-atomic="false"></div>
+        </aside>
+      </main>
+
+      <footer class="controlbar">
+        <div class="control-group" id="view-presets" role="group" aria-label="Camera presets"></div>
+
+        <div class="control-group">
+          <label class="toggle">
+            <input type="checkbox" id="tg-cutaway" />
+            <span>Cutaway</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="tg-labels" />
+            <span>Labels</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="tg-engines" />
+            <span>Engines lit</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="tg-frost" checked />
+            <span>Cryo frost</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="tg-scale" checked />
+            <span>Scale ref</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="tg-spin" />
+            <span>Auto-rotate</span>
+          </label>
+        </div>
+
+        <div class="control-group select-group">
+          <label for="sel-time">Light</label>
+          <select id="sel-time"></select>
+          <label for="sel-quality">Quality</label>
+          <select id="sel-quality"></select>
+        </div>
+
+        <div class="control-group slider-group">
+          <label for="sl-explode">Exploded</label>
+          <input type="range" id="sl-explode" min="0" max="100" value="0" />
+          <output id="out-explode">0%</output>
+        </div>
+
+        <div class="control-group">
+          <button class="primary-btn" id="btn-separate" type="button">Hot-stage separation</button>
+          <button class="ghost-btn" id="btn-reset" type="button">Reset</button>
+        </div>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <div class="modal" id="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="panel-head">
+          <h2 id="modal-title">About</h2>
+          <button class="icon-btn" id="modal-close" aria-label="Close">×</button>
+        </div>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import './src/main.js';
+    </script>
+    <script>
+      // If the module never boots (no WebGL, blocked CDN), surface it instead of
+      // leaving the user on an empty spinner.
+      setTimeout(() => {
+        if (!document.body.dataset.booted) {
+          document.getElementById('loading')?.setAttribute('hidden', '');
+          document.getElementById('boot-error')?.removeAttribute('hidden');
+        }
+      }, 12000);
+      window.addEventListener('error', (e) => {
+        if (document.body.dataset.booted) return;
+        const msg = document.getElementById('boot-error-msg');
+        if (msg && e.message) msg.textContent = e.message;
+        document.getElementById('loading')?.setAttribute('hidden', '');
+        document.getElementById('boot-error')?.removeAttribute('hidden');
+      });
+    </script>
+  </body>
+</html>
